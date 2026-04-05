@@ -1,0 +1,30 @@
+{
+  "impeler": "IMP1_Synthetic",
+  "function": "a + b * v + c * v**2",
+  "params_val": {
+    "a": 0.04567034,
+    "b": 0.06266765,
+    "c": 7.398e-05
+  },
+  "metadata": {
+    "date": "2026-04-05",
+    "user": "",
+    "model": "poly2",
+    "description": "poly2 calibration for IMP1_Synthetic. Fit on 5 velocities. R\u00b2=1.0000.",
+    "r2": 0.99999,
+    "n_points": 5,
+    "velocities_mps": [
+      0.3,
+      0.6,
+      0.9,
+      1.2,
+      1.5
+    ],
+    "all_fits_r2": {
+      "linear": 0.999951,
+      "poly2": 0.99999,
+      "poly3": 0.999991,
+      "power": 0.999696
+    }
+  }
+}

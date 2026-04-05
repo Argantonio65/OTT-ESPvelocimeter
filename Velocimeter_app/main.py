@@ -143,12 +143,9 @@ class ESP32Monitor(QMainWindow, Ui_MainWindow):
 
     def convert_rpm_to_mps(self, value):
         if self.calibration_data:
-            self.calibration_data["params_val"]["v"] = value
-            mps = eval(
-                self.calibration_data["function"],
-                {},
-                self.calibration_data["params_val"],
-            )
+            ctx = {"log": np.log, "exp": np.exp, "sqrt": np.sqrt, "v": value}
+            ctx.update(self.calibration_data["params_val"])
+            mps = eval(self.calibration_data["function"], {"__builtins__": {}}, ctx)
         else:
             mps = value
         return mps

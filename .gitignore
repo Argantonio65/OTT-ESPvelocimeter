@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environment (uv)
+.venv
+
+# Measurement output files
+Measurements/
+Velocimeter_app/records/
+
+# PlatformIO build cache
+.pio/
+
+# Word / Office temp files
+~$*

@@ -1,0 +1,8 @@
+{
+  "function": "a+b*v",
+  "params_val": {
+    "a": 0.3,
+    "b": 1.5},
+  "metadata":{"date":"28-08-23", "user":"A. Moreno-Rodenas", "description":"example calibration routine for a linear function"
+  }
+ }

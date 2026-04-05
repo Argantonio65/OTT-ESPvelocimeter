@@ -1,5 +1,5 @@
 # OTT Moulinette ESP32 Velocimeter, 
-# A. Moreno-Rodenas. Delft, 05-06-2026
+###### A. Moreno-Rodenas. Delft, 05-06-2026
 
 A digital interface for the **OTT moulinette**, a classic mechanical water-velocity sensor (propeller-type). An ESP32 microcontroller counts the propeller tip pulses and streams the data over WiFi to a Python desktop application that plots, calibrates, and records the measurements.
 

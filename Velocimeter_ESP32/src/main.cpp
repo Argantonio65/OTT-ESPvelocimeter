@@ -1,9 +1,9 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
-const char* ssid     = "TomBombadil";
-const char* password = "0987654321";
-const char* serverIP = "192.168.99.65";
+const char* ssid     = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+const char* serverIP = "YOUR_SERVER_IP";  // IP of the laptop running the Python app
 const int   serverPort = 8080;
 
 WiFiClient client;

@@ -11,39 +11,42 @@ import json
 import time
 import numpy as np
 
-## Prepare socket WIFI connection
-TCP_IP = "0.0.0.0"
 TCP_PORT = 8080
-BUFFER_SIZE = 1024
 
 class SocketThread(QThread):
     data_received = pyqtSignal(str)
     connected_signal = pyqtSignal()
     error_signal = pyqtSignal(str)
 
-    def __init__(self, TCP_IP, TCP_PORT, BUFFER_SIZE):
+    def __init__(self, esp_ip, port=TCP_PORT):
         super().__init__()
-        self.TCP_IP = TCP_IP
-        self.TCP_PORT = TCP_PORT
-        self.BUFFER_SIZE = BUFFER_SIZE
+        self.esp_ip = esp_ip
+        self.port = port
         self.running = False
 
     def run(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            s.bind((self.TCP_IP, self.TCP_PORT))
-            s.listen(1)
-            self.connected_signal.emit()
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(10)
+            s.connect((self.esp_ip, self.port))
+            s.settimeout(5)
             self.running = True
+            self.connected_signal.emit()
+            buf = ""
+            while self.running:
+                try:
+                    chunk = s.recv(1024).decode("utf-8", errors="ignore")
+                    if not chunk:
+                        break
+                    buf += chunk
+                    while "\n" in buf:
+                        line, buf = buf.split("\n", 1)
+                        self.data_received.emit(line.strip())
+                except socket.timeout:
+                    continue
+            s.close()
         except socket.error as e:
             self.error_signal.emit(str(e))
-
-        while self.running:
-            conn, addr = s.accept()
-            data = conn.recv(self.BUFFER_SIZE)
-            if data:
-                self.data_received.emit(data.decode())
-            conn.close()
 
     def stop(self):
         self.running = False
@@ -106,6 +109,7 @@ class ESP32Monitor(QMainWindow, Ui_MainWindow):
         self.usbConnectButton.clicked.connect(self.toggle_usb_connection)
         self.usbRefreshButton.clicked.connect(self.refresh_ports)
         self.applySettingsButton.clicked.connect(self.apply_settings)
+        self.wifiSaveButton.clicked.connect(self.save_wifi_credentials)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_graph)
 
@@ -150,7 +154,11 @@ class ESP32Monitor(QMainWindow, Ui_MainWindow):
 
     def toggle_connection(self):
         if not hasattr(self, "socket_thread") or not self.socket_thread.running:
-            self.socket_thread = SocketThread(TCP_IP, TCP_PORT, BUFFER_SIZE)
+            ip = self.espIPEdit.text().strip()
+            if not ip:
+                self.textEdit.append("Enter the ESP32 IP address first (connect via USB to auto-fill).")
+                return
+            self.socket_thread = SocketThread(ip)
             self.socket_thread.data_received.connect(self.handle_data)
             self.socket_thread.start()
             self.start_time = time.time()
@@ -192,12 +200,18 @@ class ESP32Monitor(QMainWindow, Ui_MainWindow):
             self.connectionStatusLabel.setText("Disconnected")
             self.connectionStatusLabel.setStyleSheet("color: red;")
             self.pushButton.setEnabled(True)
+            self.wifiSSIDEdit.setEnabled(False)
+            self.wifiPassEdit.setEnabled(False)
+            self.wifiSaveButton.setEnabled(False)
 
     def _on_usb_connected(self):
-        self.start_time = time.time()
+        # start_time is set when READY is received, not here
         self.usbConnectButton.setText("Disconnect USB")
         self.connectionStatusLabel.setText("Connected (USB)")
         self.connectionStatusLabel.setStyleSheet("color: green;")
+        self.wifiSSIDEdit.setEnabled(True)
+        self.wifiPassEdit.setEnabled(True)
+        self.wifiSaveButton.setEnabled(True)
 
     def apply_settings(self):
         if self.serial_thread is None or not self.serial_thread.running:
@@ -215,6 +229,15 @@ class ESP32Monitor(QMainWindow, Ui_MainWindow):
             self._open_record_file()
             self.textEdit.append(f"Recording restarted → {self.recordNameLabel.text()}")
 
+    def save_wifi_credentials(self):
+        ssid = self.wifiSSIDEdit.text().strip()
+        password = self.wifiPassEdit.text()
+        if not ssid:
+            self.textEdit.append("Enter an SSID before saving.")
+            return
+        self.serial_thread.send_command(f"WIFI:{ssid},{password}")
+        self.textEdit.append(f"WiFi credentials sent for '{ssid}' — reboot ESP to apply.")
+
     def _on_usb_error(self, msg):
         self.usbConnectButton.setText("Connect USB")
         self.connectionStatusLabel.setText("USB Error")
@@ -226,14 +249,30 @@ class ESP32Monitor(QMainWindow, Ui_MainWindow):
     def handle_data(self, data):
         line = data.strip()
 
-        # ESP acknowledgement lines (e.g. "OK INTERVAL:1.0") — log but don't plot
-        if line.startswith("OK ") or not line:
+        # ESP reports its IP — auto-fill the WiFi connect field
+        if line.startswith("IP:"):
+            ip = line[3:].strip()
+            self.espIPEdit.setText(ip)
+            self.textEdit.append(f"ESP32 IP: {ip}")
+            return
+
+        # READY signal: ESP finished init — start the elapsed timer now
+        if line == "READY":
+            self.start_time = time.time()
+            self.textEdit.append("── ESP32 ready ──")
+            return
+
+        # ESP acknowledgement / status lines — log but don't plot
+        if line.startswith("OK ") or line.startswith("ERR ") or not line:
             self.textEdit.append(line)
             return
 
         try:
             raw = float(line)
-            elapsed_s = time.time() - self.start_time if self.start_time else 0.0
+            # WiFi path: start_time set on first data (no READY signal over TCP)
+            if self.start_time is None:
+                self.start_time = time.time()
+            elapsed_s = time.time() - self.start_time
 
             self.data_raw.append(raw)
             self.data_raw = self.data_raw[-100:]

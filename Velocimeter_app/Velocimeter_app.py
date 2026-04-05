@@ -29,11 +29,11 @@ class Ui_MainWindow(object):
         )  # Set initial color to red for "Disconnected"
 
         self.espIPEdit = QtWidgets.QLineEdit(parent=self.centralwidget)
-        self.espIPEdit.setPlaceholderText("ESP32 IP  (auto-filled via USB)")
-        self.espIPEdit.setFixedWidth(200)
+        self.espIPEdit.setText("192.168.4.1")
+        self.espIPEdit.setFixedWidth(120)
         self.espIPEdit.setToolTip(
-            "IP address of the ESP32 on the shared WiFi network.\n"
-            "Auto-filled when the ESP reports it over USB serial."
+            "Fixed IP of the ESP32 Access Point (192.168.4.1).\n"
+            "Connect your laptop to the 'OTT_ESPvelocimeter' WiFi network first."
         )
 
         self.topLayout = QtWidgets.QHBoxLayout()
@@ -61,34 +61,6 @@ class Ui_MainWindow(object):
         self.usbLayout.addWidget(self.usbConnectButton)
         self.usbLayout.addStretch()
         self.mainLayout.addLayout(self.usbLayout)
-
-        # WiFi credentials row (send secondary network to ESP via USB)
-        self.wifiCredLayout = QtWidgets.QHBoxLayout()
-
-        self.wifiSSIDEdit = QtWidgets.QLineEdit(parent=self.centralwidget)
-        self.wifiSSIDEdit.setPlaceholderText("Secondary SSID")
-        self.wifiSSIDEdit.setFixedWidth(160)
-        self.wifiSSIDEdit.setEnabled(False)
-
-        self.wifiPassEdit = QtWidgets.QLineEdit(parent=self.centralwidget)
-        self.wifiPassEdit.setPlaceholderText("Password")
-        self.wifiPassEdit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
-        self.wifiPassEdit.setFixedWidth(140)
-        self.wifiPassEdit.setEnabled(False)
-
-        self.wifiSaveButton = QtWidgets.QPushButton("Save WiFi to ESP", parent=self.centralwidget)
-        self.wifiSaveButton.setToolTip(
-            "Save secondary WiFi credentials to ESP32 NVS via USB.\n"
-            "Reboot the ESP32 to apply. The primary network (OTT_ESPvelocimeter) is always tried first."
-        )
-        self.wifiSaveButton.setEnabled(False)
-
-        self.wifiCredLayout.addWidget(QtWidgets.QLabel("Secondary WiFi:", parent=self.centralwidget))
-        self.wifiCredLayout.addWidget(self.wifiSSIDEdit)
-        self.wifiCredLayout.addWidget(self.wifiPassEdit)
-        self.wifiCredLayout.addWidget(self.wifiSaveButton)
-        self.wifiCredLayout.addStretch()
-        self.mainLayout.addLayout(self.wifiCredLayout)
 
         # Sensor settings row
         self.settingsLayout = QtWidgets.QHBoxLayout()

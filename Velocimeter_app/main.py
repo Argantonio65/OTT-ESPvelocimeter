@@ -103,13 +103,13 @@ class ESP32Monitor(QMainWindow, Ui_MainWindow):
 
         self.data = []
         self.data_raw = []
+        self.time_data = []  # elapsed seconds matching each data point
 
         # Connect signals and slots
         self.pushButton.clicked.connect(self.toggle_connection)
         self.usbConnectButton.clicked.connect(self.toggle_usb_connection)
         self.usbRefreshButton.clicked.connect(self.refresh_ports)
         self.applySettingsButton.clicked.connect(self.apply_settings)
-        self.wifiSaveButton.clicked.connect(self.save_wifi_credentials)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_graph)
 
@@ -118,6 +118,7 @@ class ESP32Monitor(QMainWindow, Ui_MainWindow):
         self.refresh_ports()
 
         self.recording = False
+        self.recording_pending = False
         self.record_file = None
         self.record_folder = None
         self.record_count = 0
@@ -200,18 +201,12 @@ class ESP32Monitor(QMainWindow, Ui_MainWindow):
             self.connectionStatusLabel.setText("Disconnected")
             self.connectionStatusLabel.setStyleSheet("color: red;")
             self.pushButton.setEnabled(True)
-            self.wifiSSIDEdit.setEnabled(False)
-            self.wifiPassEdit.setEnabled(False)
-            self.wifiSaveButton.setEnabled(False)
 
     def _on_usb_connected(self):
         # start_time is set when READY is received, not here
         self.usbConnectButton.setText("Disconnect USB")
         self.connectionStatusLabel.setText("Connected (USB)")
         self.connectionStatusLabel.setStyleSheet("color: green;")
-        self.wifiSSIDEdit.setEnabled(True)
-        self.wifiPassEdit.setEnabled(True)
-        self.wifiSaveButton.setEnabled(True)
 
     def apply_settings(self):
         if self.serial_thread is None or not self.serial_thread.running:
@@ -223,20 +218,12 @@ class ESP32Monitor(QMainWindow, Ui_MainWindow):
         self.serial_thread.send_command(f"MODE:{mode}")
         self.textEdit.append(f"Settings applied — interval: {interval_s}s, mode: {self.modeCombo.currentText()}")
 
-        if self.recording:
+        if self.recording or self.recording_pending:
             self._close_record_file()
-            self.record_count += 1
-            self._open_record_file()
-            self.textEdit.append(f"Recording restarted → {self.recordNameLabel.text()}")
-
-    def save_wifi_credentials(self):
-        ssid = self.wifiSSIDEdit.text().strip()
-        password = self.wifiPassEdit.text()
-        if not ssid:
-            self.textEdit.append("Enter an SSID before saving.")
-            return
-        self.serial_thread.send_command(f"WIFI:{ssid},{password}")
-        self.textEdit.append(f"WiFi credentials sent for '{ssid}' — reboot ESP to apply.")
+            self.recording = False
+            self.recording_pending = True
+            self.recordNameLabel.setText("Waiting for next second...")
+            self.textEdit.append("Settings applied — recording will restart at next whole second.")
 
     def _on_usb_error(self, msg):
         self.usbConnectButton.setText("Connect USB")
@@ -280,8 +267,21 @@ class ESP32Monitor(QMainWindow, Ui_MainWindow):
             value = self.convert_rpm_to_mps(raw)
             self.data.append(value)
             self.data = self.data[-100:]
+            self.time_data.append(elapsed_s)
+            self.time_data = self.time_data[-100:]
+
             self.plotWidget.clear()
-            self.plotWidget.plot(self.data)
+            self.plotWidget.plot(self.time_data, self.data)
+
+            # Pending: wait for a sample that lands on (or nearest to) a whole second
+            if self.recording_pending:
+                interval_s = self.intervalSpinBox.value()
+                if abs(elapsed_s - round(elapsed_s)) <= interval_s / 2:
+                    self.recording_pending = False
+                    self.recording = True
+                    self._open_record_file()
+                    pixmap = self.create_circle_pixmap(QtCore.Qt.GlobalColor.red)
+                    self.circleLabel.setPixmap(pixmap)
 
             if self.recording and self.record_file:
                 timestamp = QtCore.QDateTime.currentDateTime().toString(
@@ -307,7 +307,7 @@ class ESP32Monitor(QMainWindow, Ui_MainWindow):
                 break
             self.record_count += 1
 
-        f = open(full_file_path, "w")
+        f = open(full_file_path, "w", encoding="utf-8")
 
         # ── Metadata header ───────────────────────────────────────────────────
         now_str = QtCore.QDateTime.currentDateTime().toString("yyyy-MM-dd HH:mm:ss")
@@ -337,7 +337,7 @@ class ESP32Monitor(QMainWindow, Ui_MainWindow):
             self.record_file = None
 
     def toggle_recording(self):
-        if not self.recording:
+        if not self.recording and not self.recording_pending:
             if self.record_folder is None:
                 folder = QFileDialog.getExistingDirectory(
                     self, "Select Folder to Save Records"
@@ -346,22 +346,22 @@ class ESP32Monitor(QMainWindow, Ui_MainWindow):
                     return
                 self.record_folder = folder
 
-            self._open_record_file()
-            self.recording = True
+            self.recording_pending = True
             self.recordButton.setText("Stop Recording")
-            pixmap = self.create_circle_pixmap(QtCore.Qt.GlobalColor.red)
-            self.circleLabel.setPixmap(pixmap)
+            self.recordNameLabel.setText("Waiting for next second...")
         else:
             self.recording = False
+            self.recording_pending = False
             self._close_record_file()
             self.recordButton.setText("Start Recording")
+            self.recordNameLabel.setText("")
             pixmap = self.create_circle_pixmap(QtCore.Qt.GlobalColor.black)
             self.circleLabel.setPixmap(pixmap)
 
     def update_graph(self):
-        # Redraw the data on the graph
         self.plotWidget.clear()
-        self.plotWidget.plot(self.data)
+        if self.time_data and self.data:
+            self.plotWidget.plot(self.time_data, self.data)
 
         # Maintain the scroll bar to the lowest part
         scrollbar = self.textEdit.verticalScrollBar()

@@ -3,6 +3,7 @@
   "params_val": {
     "a": 0.3,
     "b": 1.5},
+  "impeler":"ID1",
   "metadata":{"date":"28-08-23", "user":"A. Moreno-Rodenas", "description":"example calibration routine for a linear function"
   }
  }

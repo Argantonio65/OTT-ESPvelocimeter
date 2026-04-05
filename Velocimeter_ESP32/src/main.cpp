@@ -1,32 +1,20 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <Preferences.h>
 
-// ── WiFi ──────────────────────────────────────────────────────────────────────
-// Primary network: the ESP32 creates or joins this by default.
-// Secondary network: saved to NVS via serial command  WIFI:ssid,password
-const char* PRIMARY_SSID = "OTT_ESPvelocimeter";
-const char* PRIMARY_PASS = "12345678";
+// ── WiFi Access Point ─────────────────────────────────────────────────────────
+// The ESP32 creates its own WiFi network.
+// Connect your laptop to this network, then use the Python app to connect.
+const char* AP_SSID = "OTT_ESPvelocimeter";
+const char* AP_PASS = "12345678";
 
-const int   serverPort = 8080;
+// Static IP for the ESP32 on its own AP network (always the same)
+IPAddress AP_IP     (192, 168,   4,   1);
+IPAddress AP_SUBNET (255, 255, 255,   0);
 
-WiFiServer  tcpServer(serverPort);
-WiFiClient  tcpClient;
-Preferences prefs;
-bool        wifiConnected = false;
+const int serverPort = 8080;
 
-// Try to connect to a given network; returns true if successful within timeout.
-bool tryConnect(const char* ssid, const char* pass, unsigned long timeout_ms) {
-  WiFi.disconnect(true);
-  WiFi.begin(ssid, pass);
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < timeout_ms) {
-    delay(200);
-    Serial.print(".");
-  }
-  Serial.println();
-  return WiFi.status() == WL_CONNECTED;
-}
+WiFiServer tcpServer(serverPort);
+WiFiClient tcpClient;
 
 // ── Propeller pins ────────────────────────────────────────────────────────────
 const int fanPin = 17;
@@ -75,9 +63,8 @@ void nonBlockingLedBlink() {
 
 // ── Serial command parser ─────────────────────────────────────────────────────
 // Commands (newline-terminated):
-//   INTERVAL:x.x        – set reporting interval in seconds (0.1–30)
-//   MODE:0 / MODE:1     – count mode / period mode
-//   WIFI:ssid,password  – save secondary WiFi credentials to NVS
+//   INTERVAL:x.x    – set reporting interval in seconds (0.1–30)
+//   MODE:0 / MODE:1 – count mode / period mode
 void checkSerialCommands() {
   if (!Serial.available()) return;
   String cmd = Serial.readStringUntil('\n');
@@ -90,7 +77,6 @@ void checkSerialCommands() {
       Serial.print("OK INTERVAL:");
       Serial.println(secs, 3);
     }
-
   } else if (cmd.startsWith("MODE:")) {
     int mode = cmd.substring(5).toInt();
     if (mode == 0 || mode == 1) {
@@ -98,65 +84,27 @@ void checkSerialCommands() {
       Serial.print("OK MODE:");
       Serial.println(mode);
     }
-
-  } else if (cmd.startsWith("WIFI:")) {
-    // Format: WIFI:ssid,password
-    String args  = cmd.substring(5);
-    int    comma = args.indexOf(',');
-    if (comma > 0) {
-      String newSSID = args.substring(0, comma);
-      String newPass = args.substring(comma + 1);
-      prefs.begin("wifi", false);
-      prefs.putString("ssid", newSSID);
-      prefs.putString("pass", newPass);
-      prefs.end();
-      Serial.println("OK WIFI saved — reboot to apply");
-    } else {
-      Serial.println("ERR WIFI format: WIFI:ssid,password");
-    }
   }
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
 void setup() {
   Serial.begin(115200);
-  Serial.println("Initializing — searching for WiFi...");
+  Serial.println("Initializing — starting WiFi Access Point...");
 
-  // Load secondary WiFi credentials from NVS (empty strings if never saved).
-  // Open read-write so the namespace is created on first boot if it doesn't exist.
-  prefs.begin("wifi", false);
-  String secSSID = prefs.isKey("ssid") ? prefs.getString("ssid") : "";
-  String secPass = prefs.isKey("pass") ? prefs.getString("pass") : "";
-  prefs.end();
+  WiFi.softAPConfig(AP_IP, AP_IP, AP_SUBNET);
+  WiFi.softAP(AP_SSID, AP_PASS);
 
-  bool hasSecondary = secSSID.length() > 0;
+  Serial.println("AP started: " + String(AP_SSID));
+  Serial.println("IP:" + WiFi.softAPIP().toString());
 
-  // Split the 10 s budget: 5 s each if a secondary exists, 10 s if not
-  unsigned long primaryTimeout_ms   = hasSecondary ? 5000 : 10000;
-
-  Serial.print("Trying primary WiFi (OTT_ESPvelocimeter)");
-  wifiConnected = tryConnect(PRIMARY_SSID, PRIMARY_PASS, primaryTimeout_ms);
-
-  if (!wifiConnected && hasSecondary) {
-    Serial.print("Trying secondary WiFi (" + secSSID + ")");
-    wifiConnected = tryConnect(secSSID.c_str(), secPass.c_str(), 5000);
-  }
-
-  if (wifiConnected) {
-    tcpServer.begin();
-    Serial.println("Connected to: " + String(WiFi.SSID()));
-    Serial.println("IP:" + WiFi.localIP().toString());
-  } else {
-    Serial.println("WiFi unavailable — serial-only mode");
-  }
+  tcpServer.begin();
 
   pinMode(fanPin, INPUT_PULLUP);
   pinMode(ledPin, OUTPUT);
   attachInterrupt(digitalPinToInterrupt(fanPin), handleFanInterrupt, FALLING);
 
   lastReportTime_ms = millis();
-
-  // Signal to Python app that initialisation is complete and the timer can start
   Serial.println("READY");
 }
 
@@ -164,6 +112,11 @@ void setup() {
 void loop() {
   checkSerialCommands();
   nonBlockingLedBlink();
+
+  // Accept new TCP client if none is connected
+  if (!tcpClient.connected()) {
+    tcpClient = tcpServer.accept();
+  }
 
   unsigned long now = millis();
   if (now - lastReportTime_ms < reportInterval_ms) return;
@@ -192,13 +145,7 @@ void loop() {
 
   Serial.println(rps, 3);
 
-  if (wifiConnected) {
-    // Accept a new client if none is currently connected
-    if (!tcpClient.connected()) {
-      tcpClient = tcpServer.accept();
-    }
-    if (tcpClient.connected()) {
-      tcpClient.println(rps, 3);
-    }
+  if (tcpClient.connected()) {
+    tcpClient.println(rps, 3);
   }
 }

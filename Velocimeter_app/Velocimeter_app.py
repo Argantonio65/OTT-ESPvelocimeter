@@ -82,14 +82,26 @@ class Ui_MainWindow(object):
             "Period avg.: 1 / mean inter-pulse period (better at low speeds)"
         )
 
+        self.transLabel = QtWidgets.QLabel("Transitions/rev:", parent=self.centralwidget)
+        self.transCombo = QtWidgets.QComboBox(parent=self.centralwidget)
+        self.transCombo.addItems(["1  (FALLING only)", "2  (CHANGE — both edges)"])
+        self.transCombo.setCurrentIndex(1)
+        self.transCombo.setToolTip(
+            "1: count only the falling edge (conductive→non-conductive)\n"
+            "2: count both edges per revolution — doubles resolution (default)"
+        )
+
         self.applySettingsButton = QtWidgets.QPushButton("Apply to ESP", parent=self.centralwidget)
-        self.applySettingsButton.setToolTip("Send interval and mode settings to the ESP32 (USB only)")
+        self.applySettingsButton.setToolTip("Send interval, mode and transitions settings to the ESP32 (USB only)")
 
         self.settingsLayout.addWidget(self.intervalLabel)
         self.settingsLayout.addWidget(self.intervalSpinBox)
         self.settingsLayout.addSpacing(12)
         self.settingsLayout.addWidget(self.modeLabel)
         self.settingsLayout.addWidget(self.modeCombo)
+        self.settingsLayout.addSpacing(12)
+        self.settingsLayout.addWidget(self.transLabel)
+        self.settingsLayout.addWidget(self.transCombo)
         self.settingsLayout.addSpacing(12)
         self.settingsLayout.addWidget(self.applySettingsButton)
         self.settingsLayout.addStretch()

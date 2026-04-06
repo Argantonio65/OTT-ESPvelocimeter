@@ -21,7 +21,8 @@ const int fanPin = 17;
 const int ledPin = 2;
 
 // ── Interrupt state ───────────────────────────────────────────────────────────
-const unsigned long DEBOUNCE_US = 15000;  // 15 ms
+const unsigned long DEBOUNCE_US          = 15000;  // 15 ms
+float               TRANSITIONS_PER_REV  = 2.0f;   // runtime-configurable via TRANSITIONS:1 or TRANSITIONS:2
 
 volatile unsigned long lastPulseTime_us = 0;
 volatile int           fanCounter       = 0;
@@ -84,6 +85,13 @@ void checkSerialCommands() {
       Serial.print("OK MODE:");
       Serial.println(mode);
     }
+  } else if (cmd.startsWith("TRANSITIONS:")) {
+    int t = cmd.substring(12).toInt();
+    if (t == 1 || t == 2) {
+      TRANSITIONS_PER_REV = (float)t;
+      Serial.print("OK TRANSITIONS:");
+      Serial.println(t);
+    }
   }
 }
 
@@ -102,7 +110,7 @@ void setup() {
 
   pinMode(fanPin, INPUT_PULLUP);
   pinMode(ledPin, OUTPUT);
-  attachInterrupt(digitalPinToInterrupt(fanPin), handleFanInterrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(fanPin), handleFanInterrupt, CHANGE);
 
   lastReportTime_ms = millis();
   Serial.println("READY");
@@ -135,11 +143,12 @@ void loop() {
   float rps = 0.0f;
 
   if (reportMode == 0) {
-    rps = count / interval_s;
+    rps = count / TRANSITIONS_PER_REV / interval_s;
   } else {
     if (nPeriods > 0) {
+      // Each inter-transition period is 1/TRANSITIONS_PER_REV of a revolution
       float meanPeriod_s = (sumP / (float)nPeriods) / 1e6f;
-      rps = 1.0f / meanPeriod_s;
+      rps = 1.0f / (meanPeriod_s * TRANSITIONS_PER_REV);
     }
   }
 

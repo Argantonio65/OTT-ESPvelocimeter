@@ -209,11 +209,17 @@ class ESP32Monitor(QMainWindow, Ui_MainWindow):
         if self.serial_thread is None or not self.serial_thread.running:
             self.textEdit.append("Connect via USB first to apply settings.")
             return
-        interval_s = self.intervalSpinBox.value()
-        mode = self.modeCombo.currentIndex()  # 0 = count, 1 = period
+        interval_s   = self.intervalSpinBox.value()
+        mode         = self.modeCombo.currentIndex()   # 0 = count, 1 = period
+        transitions  = self.transCombo.currentIndex() + 1  # 1 or 2
         self.serial_thread.send_command(f"INTERVAL:{interval_s:.1f}")
         self.serial_thread.send_command(f"MODE:{mode}")
-        self.textEdit.append(f"Settings applied — interval: {interval_s}s, mode: {self.modeCombo.currentText()}")
+        self.serial_thread.send_command(f"TRANSITIONS:{transitions}")
+        self.textEdit.append(
+            f"Settings applied — interval: {interval_s}s, "
+            f"mode: {self.modeCombo.currentText()}, "
+            f"transitions/rev: {transitions}"
+        )
 
         if self.recording or self.recording_pending:
             self._close_record_file()
@@ -312,6 +318,7 @@ class ESP32Monitor(QMainWindow, Ui_MainWindow):
         f.write(f"# Date: {now_str}\n")
         f.write(f"# Interval (s): {self.intervalSpinBox.value():.1f}\n")
         f.write(f"# Mode: {self.modeCombo.currentText()}\n")
+        f.write(f"# Transitions/rev: {self.transCombo.currentIndex() + 1}\n")
         if self.calibration_data:
             cal_text = self.function_to_text(
                 self.calibration_data["function"],
